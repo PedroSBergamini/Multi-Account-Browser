@@ -7,10 +7,10 @@ import { StorageService } from '../src/storage/StorageService.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Switches de comando para ocultar que o navegador é automatizado (ajuda no login do Google)
+// Switches de comando para ocultar que o navegador é automatizado e parecer um navegador real
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-// app.commandLine.appendSwitch('use-fake-device-for-media-stream'); // Opcional
-// app.commandLine.appendSwitch('disable-features', 'IsolateOrigins,site-per-process'); // Removido para manter segurança padrão
+app.commandLine.appendSwitch('exclude-switches', 'enable-automation');
+app.commandLine.appendSwitch('lang', 'pt-BR');
 
 // Singleton instances
 const security = SecurityService.getInstance();
@@ -69,6 +69,10 @@ async function createWindow() {
  */
 function setupSessionHeaders(ses: any) {
   if (!ses) return;
+
+  // Definir o User-Agent globalmente para a sessão para ser mais consistente
+  const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
+  ses.setUserAgent(userAgent);
 
   // Interceptor para cabeçalhos de resposta (remover restrições)
   ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details: any, callback: any) => {
@@ -140,18 +144,18 @@ function setupSessionHeaders(ses: any) {
   ses.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details: any, callback: any) => {
     const headers = { ...details.requestHeaders };
     
-    // Remover Referer e Origin se forem de origem local/desenvolvimento para evitar bloqueios de segurança
-    if (headers['Referer'] && (headers['Referer'].includes('localhost') || headers['Referer'].includes('run.app'))) {
-      delete headers['Referer'];
+    // Remover Referer e Origin APENAS se forem explicitamente de desenvolvimento local
+    // e se não estivermos em uma navegação interna do Google
+    const isGoogle = details.url.includes('google.com') || details.url.includes('gstatic.com');
+    
+    if (!isGoogle) {
+      if (headers['Referer'] && (headers['Referer'].includes('localhost') || headers['Referer'].includes('run.app'))) {
+        delete headers['Referer'];
+      }
+      if (headers['Origin'] && (headers['Origin'].includes('localhost') || headers['Origin'].includes('run.app'))) {
+        delete headers['Origin'];
+      }
     }
-    if (headers['Origin'] && (headers['Origin'].includes('localhost') || headers['Origin'].includes('run.app'))) {
-      delete headers['Origin'];
-    }
-
-    // Garantir que o User-Agent seja consistente e pareça um navegador real
-    // Usar um User-Agent de Chrome estável e comum
-    const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
-    headers['User-Agent'] = userAgent;
 
     callback({
       cancel: false,
