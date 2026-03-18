@@ -40,14 +40,24 @@ async function createWindow() {
 // --- IPC Handlers (Canais Seguros) ---
 
 /**
+ * Verifica se é o primeiro acesso (sem dados salvos).
+ */
+ipcMain.handle('is-first-run', async () => {
+  const data = await storage.load();
+  return data === null;
+});
+
+/**
  * Verifica se a senha mestre está correta e desbloqueia os dados.
  */
 ipcMain.handle('unlock-app', async (_, password: string) => {
   const encryptedData = await storage.load();
   
   if (!encryptedData) {
-    // Primeira vez: define a senha mestre
+    // Primeira vez: define a senha mestre e cria o dado de teste
     masterPasswordHash = password;
+    const testData = await security.encrypt('VALID_SESSION', password);
+    await storage.save({ accounts: [], test: testData });
     return { success: true, isNew: true };
   }
 
@@ -103,6 +113,34 @@ ipcMain.handle('load-accounts', async () => {
   }
 
   return decryptedAccounts;
+});
+
+/**
+ * Remove uma conta salva.
+ */
+ipcMain.handle('delete-account', async (_, accountId: string) => {
+  if (!masterPasswordHash) return { success: false, error: 'App bloqueado.' };
+
+  const encryptedData = await storage.load();
+  if (!encryptedData || !encryptedData.accounts) return { success: false };
+
+  const newAccounts = [];
+  for (const encAccount of encryptedData.accounts) {
+    try {
+      const decrypted = await security.decrypt(encAccount, masterPasswordHash);
+      const account = JSON.parse(decrypted);
+      if (account.id !== accountId) {
+        newAccounts.push(encAccount);
+      }
+    } catch (e) {
+      newAccounts.push(encAccount);
+    }
+  }
+
+  encryptedData.accounts = newAccounts;
+  await storage.save(encryptedData);
+  
+  return { success: true };
 });
 
 /**

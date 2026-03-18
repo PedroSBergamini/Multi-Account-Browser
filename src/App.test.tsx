@@ -9,6 +9,9 @@ const mockElectronAPI = {
   getTabPartition: vi.fn(),
   exportBackup: vi.fn(),
   importBackup: vi.fn(),
+  deleteAccount: vi.fn(),
+  saveCredentials: vi.fn(),
+  isFirstRun: vi.fn().mockResolvedValue(false),
 };
 
 // @ts-ignore
@@ -19,11 +22,21 @@ describe('App Component', () => {
     vi.clearAllMocks();
   });
 
-  it('should render the unlock screen initially', () => {
+  it('should render the unlock screen initially', async () => {
     render(<App />);
-    expect(screen.getByText('Multi Account Browser')).toBeInTheDocument();
+    expect(await screen.findByText('Multi Account Browser')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('••••••••••••')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Desbloquear Navegador/i })).toBeInTheDocument();
+  });
+
+  it('should show the setup screen on first run', async () => {
+    mockElectronAPI.isFirstRun.mockResolvedValueOnce(true);
+    render(<App />);
+    expect(await screen.findByText('Bem-vindo!')).toBeInTheDocument();
+    expect(screen.getByText(/Este é o seu primeiro acesso/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Mínimo 6 caracteres/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Repita a senha/i)).toBeInTheDocument();
+    expect(screen.getByText(/Criar Cofre Seguro/i)).toBeInTheDocument();
   });
 
   it('should show error message on failed unlock', async () => {
@@ -31,7 +44,7 @@ describe('App Component', () => {
     
     render(<App />);
     
-    const input = screen.getByPlaceholderText('••••••••••••');
+    const input = await screen.findByPlaceholderText('••••••••••••');
     const button = screen.getByRole('button', { name: /Desbloquear Navegador/i });
     
     fireEvent.change(input, { target: { value: 'wrong-password' } });
@@ -49,7 +62,7 @@ describe('App Component', () => {
     
     render(<App />);
     
-    const input = screen.getByPlaceholderText('••••••••••••');
+    const input = await screen.findByPlaceholderText('••••••••••••');
     const button = screen.getByRole('button', { name: /Desbloquear Navegador/i });
     
     fireEvent.change(input, { target: { value: 'correct-password' } });
@@ -70,7 +83,7 @@ describe('App Component', () => {
     render(<App />);
     
     // Unlock first
-    fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'password' } });
+    fireEvent.change(await screen.findByPlaceholderText('••••••••••••'), { target: { value: 'password' } });
     fireEvent.click(screen.getByRole('button', { name: /Desbloquear Navegador/i }));
     
     await waitFor(() => expect(screen.getByText('Nova Aba')).toBeInTheDocument());
@@ -93,7 +106,7 @@ describe('App Component', () => {
     render(<App />);
     
     // Unlock first
-    fireEvent.change(screen.getByPlaceholderText('••••••••••••'), { target: { value: 'password' } });
+    fireEvent.change(await screen.findByPlaceholderText('••••••••••••'), { target: { value: 'password' } });
     fireEvent.click(screen.getByRole('button', { name: /Desbloquear Navegador/i }));
     
     await waitFor(() => expect(screen.getByText('Nova Aba')).toBeInTheDocument());

@@ -6,6 +6,11 @@ import { contextBridge, ipcRenderer } from 'electron';
  */
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
+   * Verifica se é o primeiro acesso.
+   */
+  isFirstRun: () => ipcRenderer.invoke('is-first-run'),
+
+  /**
    * Tenta desbloquear o app com a senha mestre.
    */
   unlockApp: (password: string) => ipcRenderer.invoke('unlock-app', password),
@@ -19,6 +24,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * Carrega todas as contas salvas.
    */
   loadAccounts: () => ipcRenderer.invoke('load-accounts'),
+
+  /**
+   * Remove uma conta salva.
+   */
+  deleteAccount: (accountId: string) => ipcRenderer.invoke('delete-account', accountId),
 
   /**
    * Retorna o nome da partition para uma aba.

@@ -32,6 +32,11 @@
 - **Exportação**: O usuário clica em "Exportar Backup". O Electron abre um diálogo de salvamento, lê o arquivo de credenciais criptografado e o salva no local escolhido.
 - **Importação**: O usuário clica em "Importar JSON". O Electron abre um diálogo de seleção de arquivo, valida o formato do JSON e sobrescreve o arquivo de credenciais local. O React recarrega a lista de contas.
 
+### 6. Fluxo de Gerenciamento de Contas
+- **Adição**: O usuário clica no botão `+` na barra lateral, insere nome e e-mail. Os dados são criptografados e salvos.
+- **Remoção**: O usuário clica no ícone de fechar (`X`) em uma conta na barra lateral. O Electron remove a conta do arquivo criptografado e o React atualiza a lista.
+- **Abertura**: Clicar em uma conta abre uma nova aba com uma sessão isolada.
+
 ## Detalhamento das Telas
 
 ### Tela de Desbloqueio (Unlock Screen)
