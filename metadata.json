@@ -1,0 +1,5 @@
+{
+  "name": "Multi Account Browser",
+  "description": "Navegador desktop seguro com múltiplas sessões isoladas e gerenciamento de contas criptografadas.",
+  "requestFramePermissions": []
+}
