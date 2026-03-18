@@ -34,6 +34,21 @@ export default defineConfig({
             },
           },
         },
+        {
+          entry: 'electron/preload-webview.ts',
+          onstart(options) {
+            options.reload();
+          },
+          vite: {
+            build: {
+              rollupOptions: {
+                output: {
+                  format: 'cjs',
+                },
+              },
+            },
+          },
+        },
       ]),
       renderer({
         nodeIntegration: true,

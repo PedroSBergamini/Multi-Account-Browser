@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Switches de comando para ocultar que o navegador é automatizado e parecer um navegador real
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('exclude-switches', 'enable-automation');
+app.commandLine.appendSwitch('disable-infobars');
 app.commandLine.appendSwitch('lang', 'pt-BR');
 
 // Singleton instances
@@ -70,69 +71,32 @@ async function createWindow() {
 function setupSessionHeaders(ses: any) {
   if (!ses) return;
 
-  // Definir o User-Agent globalmente para a sessão para ser mais consistente
+  // User-Agent estável e comum (Chrome 133 no Windows)
   const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
   ses.setUserAgent(userAgent);
 
-  // Interceptor para cabeçalhos de resposta (remover restrições)
+  // Interceptor para cabeçalhos de resposta (remover restrições de enquadramento)
   ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details: any, callback: any) => {
     const headers = { ...details.responseHeaders };
     
-    // Lista exaustiva de cabeçalhos que podem bloquear o carregamento em webviews/iframes
-    const keysToRemove = [
-      'x-frame-options',
-      'content-security-policy',
-      'content-security-policy-report-only',
-      'frame-options',
-      'cross-origin-resource-policy',
-      'cross-origin-opener-policy',
-      'cross-origin-embedder-policy',
-      'x-content-security-policy',
-      'x-webkit-csp',
-      'x-content-type-options',
-      'referrer-policy',
-      'permissions-policy'
-    ];
-
     Object.keys(headers).forEach(headerKey => {
       const lowerKey = headerKey.toLowerCase();
       
-      // Remover X-Frame-Options e outros cabeçalhos de enquadramento legados
+      // Remover apenas o que impede o enquadramento (X-Frame-Options)
       if (lowerKey === 'x-frame-options' || lowerKey === 'frame-options' || lowerKey.startsWith('x-frame-')) {
         delete headers[headerKey];
         return;
       }
 
-      // Refinar Content-Security-Policy em vez de remover tudo
+      // Modificar CSP para permitir enquadramento sem remover toda a segurança
       if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
         const csp = headers[headerKey][0];
         if (csp) {
-          // Remover apenas diretivas que bloqueiam o enquadramento
+          // Remover apenas diretivas restritivas de frame-ancestors
           headers[headerKey] = [csp.replace(/frame-ancestors\s+[^;]+(;|$)/gi, '').replace(/child-src\s+[^;]+(;|$)/gi, '')];
         }
       }
-
-      // Outros cabeçalhos que podem ser removidos com segurança se necessário
-      const otherKeysToRemove = [
-        'cross-origin-resource-policy',
-        'cross-origin-opener-policy',
-        'cross-origin-embedder-policy',
-        'permissions-policy'
-      ];
-
-      if (otherKeysToRemove.some(k => lowerKey === k)) {
-        delete headers[headerKey];
-      }
     });
-
-    // Adicionar permissões CORS e políticas de recursos cruzados para evitar bloqueios
-    headers['Access-Control-Allow-Origin'] = ['*'];
-    headers['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS, PUT, PATCH, DELETE'];
-    headers['Access-Control-Allow-Headers'] = ['*'];
-    headers['Access-Control-Allow-Credentials'] = ['true'];
-    headers['Cross-Origin-Resource-Policy'] = ['cross-origin'];
-    headers['Cross-Origin-Embedder-Policy'] = ['unsafe-none'];
-    headers['Cross-Origin-Opener-Policy'] = ['unsafe-none'];
 
     callback({
       cancel: false,
@@ -140,12 +104,11 @@ function setupSessionHeaders(ses: any) {
     });
   });
 
-  // Interceptor para cabeçalhos de requisição (melhorar compatibilidade)
+  // Interceptor para cabeçalhos de requisição
   ses.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details: any, callback: any) => {
     const headers = { ...details.requestHeaders };
     
-    // Remover Referer e Origin APENAS se forem explicitamente de desenvolvimento local
-    // e se não estivermos em uma navegação interna do Google
+    // Não mexer em requisições do Google para evitar detecção
     const isGoogle = details.url.includes('google.com') || details.url.includes('gstatic.com');
     
     if (!isGoogle) {
@@ -191,7 +154,22 @@ app.whenReady().then(() => {
       webPreferences.webSecurity = true;
       webPreferences.nodeIntegration = false;
       webPreferences.contextIsolation = true;
-      webPreferences.sandbox = true; // Ativar sandbox para maior segurança detectada pelo Google
+      webPreferences.sandbox = false; // Desativar sandbox para evitar restrições excessivas em scripts do Google
+      
+      // Caminho para o preload script do webview
+      const webviewPreloadPath = path.join(__dirname, 'preload-webview.js');
+      console.log('Main: Aplicando preload ao webview:', webviewPreloadPath);
+      webPreferences.preload = webviewPreloadPath;
+    });
+
+    // Configurar permissões para a sessão do webContents
+    webContents.session.setPermissionRequestHandler((_, permission, callback) => {
+      const allowedPermissions = ['notifications', 'fullscreen', 'geolocation', 'media'];
+      if (allowedPermissions.includes(permission)) {
+        callback(true);
+      } else {
+        callback(false);
+      }
     });
   });
 
@@ -369,6 +347,20 @@ ipcMain.handle('import-backup', async () => {
     }
   }
   return { success: false };
+});
+
+/**
+ * Limpa os dados de armazenamento de uma partition.
+ */
+ipcMain.handle('clear-partition-data', async (_, partition: string) => {
+  try {
+    const ses = session.fromPartition(partition);
+    await ses.clearStorageData();
+    return { success: true };
+  } catch (error) {
+    console.error('Main: Erro ao limpar dados da partition:', error);
+    return { success: false, error: String(error) };
+  }
 });
 
 app.on('window-all-closed', () => {

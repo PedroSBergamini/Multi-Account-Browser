@@ -220,6 +220,15 @@ export default function App() {
     }
   };
 
+  const goHome = () => {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab && webviewRefs.current[activeTab.id]) {
+      const homeUrl = 'https://www.google.com';
+      webviewRefs.current[activeTab.id].loadURL(homeUrl);
+      setUrlInput(homeUrl);
+    }
+  };
+
   const reload = () => {
     const activeTab = tabs.find(t => t.id === activeTabId);
     if (activeTab && webviewRefs.current[activeTab.id]) {
@@ -498,6 +507,13 @@ export default function App() {
             <ChevronRight className="w-4 h-4" />
           </button>
           <button 
+            onClick={goHome}
+            className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"
+            title="Página Inicial"
+          >
+            <Globe className="w-4 h-4" />
+          </button>
+          <button 
             onClick={reload}
             className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"
           >
@@ -604,27 +620,40 @@ export default function App() {
               {/* No Electron real, usamos a tag <webview> */}
               <webview 
                 ref={(el) => {
-                  if (el) {
+                  if (el && !webviewRefs.current[tab.id]) {
                     webviewRefs.current[tab.id] = el;
-                    el.addEventListener('did-navigate', (e: any) => {
+                    
+                    const handleNavigate = (e: any) => {
                       if (tab.id === activeTabId) setUrlInput(e.url);
                       setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: e.url } : t));
-                    });
+                    };
+
+                    el.addEventListener('did-navigate', handleNavigate);
+                    el.addEventListener('did-navigate-in-page', handleNavigate);
+                    
                     el.addEventListener('page-title-updated', (e: any) => {
                       setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, title: e.title } : t));
                     });
-                    el.addEventListener('did-navigate-in-page', (e: any) => {
-                      if (tab.id === activeTabId) setUrlInput(e.url);
-                      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: e.url } : t));
-                    });
+                    
                     el.addEventListener('new-window', (e: any) => {
                       createNewTab(e.url);
                     });
+                    
                     el.addEventListener('did-start-loading', () => {
                       setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isLoading: true } : t));
                     });
+                    
                     el.addEventListener('did-stop-loading', () => {
                       setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isLoading: false } : t));
+                    });
+
+                    el.addEventListener('did-fail-load', (e: any) => {
+                      console.error(`Falha ao carregar aba ${tab.id}:`, e.errorCode, e.errorDescription, e.validatedURL);
+                      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isLoading: false } : t));
+                    });
+
+                    el.addEventListener('console-message', (e: any) => {
+                      console.log(`[Webview ${tab.id}] Console:`, e.message, `(Linha: ${e.line}, Origem: ${e.sourceId})`);
                     });
                   }
                 }}
@@ -724,19 +753,40 @@ export default function App() {
 
                 <section>
                   <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-4">Dados</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button 
-                      onClick={handleImport}
-                      className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700"
-                    >
-                      Importar JSON
-                    </button>
-                    <button 
-                      onClick={handleExport}
-                      className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700"
-                    >
-                      Exportar Backup
-                    </button>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <button 
+                        onClick={handleImport}
+                        className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700"
+                      >
+                        Importar JSON
+                      </button>
+                      <button 
+                        onClick={handleExport}
+                        className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700"
+                      >
+                        Exportar Backup
+                      </button>
+                    </div>
+                    
+                    {activeTabId && (
+                      <button 
+                        onClick={async () => {
+                          const activeTab = tabs.find(t => t.id === activeTabId);
+                          if (activeTab && (window as any).electronAPI.clearPartitionData) {
+                            const result = await (window as any).electronAPI.clearPartitionData(activeTab.partition);
+                            if (result.success) {
+                              alert('Dados da sessão limpos com sucesso!');
+                              reload();
+                            }
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-2 p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-all border border-red-500/20"
+                      >
+                        <RotateCw className="w-4 h-4" />
+                        Limpar Sessão da Aba Ativa
+                      </button>
+                    )}
                   </div>
                 </section>
               </div>

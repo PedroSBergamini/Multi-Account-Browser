@@ -48,6 +48,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importBackup: () => ipcRenderer.invoke('import-backup'),
 
   /**
+   * Limpa os dados de uma partition.
+   */
+  clearPartitionData: (partition: string) => ipcRenderer.invoke('clear-partition-data', partition),
+
+  /**
    * Listener para eventos do sistema (opcional).
    */
   on: (channel: string, callback: (...args: any[]) => void) => {
