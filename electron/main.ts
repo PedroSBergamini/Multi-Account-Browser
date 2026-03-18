@@ -7,12 +7,10 @@ import { StorageService } from '../src/storage/StorageService.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Desativa aceleração de hardware para evitar tela preta em algumas GPUs no Windows
-app.disableHardwareAcceleration();
-
-// Desativar isolamento de sites para permitir que o interceptor de cabeçalhos funcione sem restrições do motor Chromium
-app.commandLine.appendSwitch('disable-site-isolation-trials');
-app.commandLine.appendSwitch('disable-features', 'IsolateOrigins,site-per-process');
+// Switches de comando para ocultar que o navegador é automatizado (ajuda no login do Google)
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+// app.commandLine.appendSwitch('use-fake-device-for-media-stream'); // Opcional
+// app.commandLine.appendSwitch('disable-features', 'IsolateOrigins,site-per-process'); // Removido para manter segurança padrão
 
 // Singleton instances
 const security = SecurityService.getInstance();
@@ -45,7 +43,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
-      webSecurity: false, // Desabilitar webSecurity para permitir manipulação de cabeçalhos
+      webSecurity: true, // Reativar webSecurity para passar nos testes de segurança do Google
     },
   });
 
@@ -71,19 +69,11 @@ async function createWindow() {
  */
 function setupSessionHeaders(ses: any) {
   if (!ses) return;
-  const partition = ses.getStoragePath() ? 'persistente' : 'em memória';
-  console.log(`>>> Aplicando interceptores à sessão (${partition})...`);
 
   // Interceptor para cabeçalhos de resposta (remover restrições)
   ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details: any, callback: any) => {
     const headers = { ...details.responseHeaders };
-    const isGoogle = details.url.includes('google.com');
     
-    if (isGoogle) {
-      console.log('>>> [Response] Google URL:', details.url);
-      // console.log('>>> [Response] Headers originais:', JSON.stringify(headers));
-    }
-
     // Lista exaustiva de cabeçalhos que podem bloquear o carregamento em webviews/iframes
     const keysToRemove = [
       'x-frame-options',
@@ -100,15 +90,34 @@ function setupSessionHeaders(ses: any) {
       'permissions-policy'
     ];
 
-    let removedCount = 0;
-    const removedKeys: string[] = [];
-
     Object.keys(headers).forEach(headerKey => {
       const lowerKey = headerKey.toLowerCase();
-      if (keysToRemove.some(k => lowerKey === k) || lowerKey.startsWith('x-frame-')) {
+      
+      // Remover X-Frame-Options e outros cabeçalhos de enquadramento legados
+      if (lowerKey === 'x-frame-options' || lowerKey === 'frame-options' || lowerKey.startsWith('x-frame-')) {
         delete headers[headerKey];
-        removedKeys.push(headerKey);
-        removedCount++;
+        return;
+      }
+
+      // Refinar Content-Security-Policy em vez de remover tudo
+      if (lowerKey === 'content-security-policy' || lowerKey === 'content-security-policy-report-only') {
+        const csp = headers[headerKey][0];
+        if (csp) {
+          // Remover apenas diretivas que bloqueiam o enquadramento
+          headers[headerKey] = [csp.replace(/frame-ancestors\s+[^;]+(;|$)/gi, '').replace(/child-src\s+[^;]+(;|$)/gi, '')];
+        }
+      }
+
+      // Outros cabeçalhos que podem ser removidos com segurança se necessário
+      const otherKeysToRemove = [
+        'cross-origin-resource-policy',
+        'cross-origin-opener-policy',
+        'cross-origin-embedder-policy',
+        'permissions-policy'
+      ];
+
+      if (otherKeysToRemove.some(k => lowerKey === k)) {
+        delete headers[headerKey];
       }
     });
 
@@ -121,10 +130,6 @@ function setupSessionHeaders(ses: any) {
     headers['Cross-Origin-Embedder-Policy'] = ['unsafe-none'];
     headers['Cross-Origin-Opener-Policy'] = ['unsafe-none'];
 
-    if (isGoogle && removedCount > 0) {
-      console.log(`>>> [HeadersReceived] Removidos ${removedCount} cabeçalhos (${removedKeys.join(', ')}) de: ${details.url}`);
-    }
-
     callback({
       cancel: false,
       responseHeaders: headers
@@ -133,20 +138,7 @@ function setupSessionHeaders(ses: any) {
 
   // Interceptor para cabeçalhos de requisição (melhorar compatibilidade)
   ses.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details: any, callback: any) => {
-    const isGoogle = details.url.includes('google.com');
-    if (isGoogle) {
-      console.log('>>> [Request] Google URL:', details.url);
-    }
-
     const headers = { ...details.requestHeaders };
-    
-    // Forçar Sec-Fetch-Dest como 'document' para evitar bloqueios de iframe
-    if (headers['Sec-Fetch-Dest'] === 'iframe' || headers['Sec-Fetch-Dest'] === 'webview' || isGoogle) {
-      headers['Sec-Fetch-Dest'] = 'document';
-      headers['Sec-Fetch-Mode'] = 'navigate';
-      headers['Sec-Fetch-Site'] = 'none';
-      headers['Sec-Fetch-User'] = '?1';
-    }
     
     // Remover Referer e Origin se forem de origem local/desenvolvimento para evitar bloqueios de segurança
     if (headers['Referer'] && (headers['Referer'].includes('localhost') || headers['Referer'].includes('run.app'))) {
@@ -157,6 +149,7 @@ function setupSessionHeaders(ses: any) {
     }
 
     // Garantir que o User-Agent seja consistente e pareça um navegador real
+    // Usar um User-Agent de Chrome estável e comum
     const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
     headers['User-Agent'] = userAgent;
 
@@ -173,7 +166,6 @@ app.whenReady().then(() => {
   
   // Garantir que todas as sessões criadas (incluindo partitions de webviews) recebam os interceptores
   app.on('session-created', (ses) => {
-    console.log('>>> Nova sessão detectada:', ses.getStoragePath() || 'em memória');
     setupSessionHeaders(ses);
   });
 
@@ -192,10 +184,10 @@ app.whenReady().then(() => {
 
     // Interceptar a criação de webviews para ajustar suas webPreferences
     webContents.on('will-attach-webview', (_, webPreferences) => {
-      console.log('>>> Ajustando webPreferences para webview:', webPreferences.partition);
-      webPreferences.webSecurity = false;
+      webPreferences.webSecurity = true;
       webPreferences.nodeIntegration = false;
       webPreferences.contextIsolation = true;
+      webPreferences.sandbox = true; // Ativar sandbox para maior segurança detectada pelo Google
     });
   });
 
@@ -321,7 +313,6 @@ ipcMain.handle('delete-account', async (_, accountId: string) => {
  */
 ipcMain.handle('get-tab-partition', (_, tabId: string) => {
   const partition = `persist:tab_${tabId}`;
-  console.log('>>> Solicitada partition para aba:', tabId, '->', partition);
   // Garantir que a sessão da aba receba os interceptores assim que for solicitada
   setupSessionHeaders(session.fromPartition(partition));
   return partition;

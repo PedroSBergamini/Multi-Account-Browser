@@ -158,21 +158,20 @@ export default function App() {
   /**
    * Cria uma nova aba isolada.
    */
-  const createNewTab = async (url = 'https://www.google.com') => {
-    const id = Math.random().toString(36).substring(7);
+  const createNewTab = async (url = 'https://www.google.com', accountId?: string) => {
+    const id = accountId || Math.random().toString(36).substring(7);
     const partition = await window.electronAPI.getTabPartition(id);
-    console.log(`>>> Criando nova aba ${id} com partition: ${partition}`);
     
     const newTab: Tab = {
-      id,
-      title: 'Nova Aba',
+      id: Math.random().toString(36).substring(7), // ID único para a aba UI
+      title: accountId ? `Conta: ${accountId}` : 'Nova Aba',
       url,
       partition,
       isActive: true
     };
 
     setTabs((prev: Tab[]) => prev.map((t: Tab) => ({ ...t, isActive: false })).concat(newTab));
-    setActiveTabId(id);
+    setActiveTabId(newTab.id);
     setUrlInput(url);
   };
 
@@ -552,7 +551,7 @@ export default function App() {
                   accounts.map((acc: Account) => (
                     <div 
                       key={acc.id} 
-                      onClick={() => createNewTab()}
+                      onClick={() => createNewTab('https://www.google.com', acc.name)}
                       className="group p-3 hover:bg-neutral-800 rounded-xl transition-all cursor-pointer border border-transparent hover:border-neutral-700"
                     >
                       <div className="flex items-center gap-3">
@@ -565,7 +564,7 @@ export default function App() {
                         </div>
                         <div className="flex items-center gap-1">
                           <button 
-                            onClick={(e) => { e.stopPropagation(); createNewTab(); }}
+                            onClick={(e) => { e.stopPropagation(); createNewTab('https://www.google.com', acc.name); }}
                             className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-neutral-700 rounded-lg text-neutral-500 transition-all"
                             title="Abrir em nova aba"
                           >
@@ -635,7 +634,6 @@ export default function App() {
                 style={{ display: tab.id === activeTabId ? 'flex' : 'none' }}
                 // @ts-ignore
                 allowpopups="true"
-                useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
               />
               
               {tab.isLoading && (
