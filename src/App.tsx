@@ -129,6 +129,39 @@ export default function App() {
     setTabs((prev: Tab[]) => prev.map((t: Tab) => t.id === activeTabId ? { ...t, url: targetUrl } : t));
   };
 
+  /**
+   * Exporta as contas criptografadas para um arquivo JSON.
+   */
+  const handleExport = async () => {
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI.exportBackup();
+      if (result.success) {
+        alert('Backup exportado com sucesso!');
+      }
+    } catch (err) {
+      alert('Erro ao exportar backup.');
+    }
+  };
+
+  /**
+   * Importa contas de um arquivo JSON.
+   */
+  const handleImport = async () => {
+    try {
+      // @ts-ignore
+      const result = await window.electronAPI.importBackup();
+      if (result.success) {
+        alert('Contas importadas com sucesso!');
+        loadAccounts();
+      } else if (result.error) {
+        alert(`Erro: ${result.error}`);
+      }
+    } catch (err) {
+      alert('Erro ao importar backup.');
+    }
+  };
+
   // --- UI Components ---
 
   if (!isUnlocked) {
@@ -400,10 +433,16 @@ export default function App() {
                 <section>
                   <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-4">Dados</h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <button className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700">
+                    <button 
+                      onClick={handleImport}
+                      className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700"
+                    >
                       Importar JSON
                     </button>
-                    <button className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700">
+                    <button 
+                      onClick={handleExport}
+                      className="flex items-center justify-center gap-2 p-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700"
+                    >
                       Exportar Backup
                     </button>
                   </div>

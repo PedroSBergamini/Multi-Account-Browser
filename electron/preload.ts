@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTabPartition: (tabId: string) => ipcRenderer.invoke('get-tab-partition', tabId),
 
   /**
+   * Exporta o backup das contas.
+   */
+  exportBackup: () => ipcRenderer.invoke('export-backup'),
+
+  /**
+   * Importa o backup das contas.
+   */
+  importBackup: () => ipcRenderer.invoke('import-backup'),
+
+  /**
    * Listener para eventos do sistema (opcional).
    */
   on: (channel: string, callback: (...args: any[]) => void) => {

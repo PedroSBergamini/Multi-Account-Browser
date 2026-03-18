@@ -28,6 +28,10 @@
 - O estado da aba ativa é atualizado com a nova URL.
 - O componente de visualização (iframe/webview) recarrega com o novo endereço.
 
+### 5. Fluxo de Importação/Exportação (Backup)
+- **Exportação**: O usuário clica em "Exportar Backup". O Electron abre um diálogo de salvamento, lê o arquivo de credenciais criptografado e o salva no local escolhido.
+- **Importação**: O usuário clica em "Importar JSON". O Electron abre um diálogo de seleção de arquivo, valida o formato do JSON e sobrescreve o arquivo de credenciais local. O React recarrega a lista de contas.
+
 ## Detalhamento das Telas
 
 ### Tela de Desbloqueio (Unlock Screen)

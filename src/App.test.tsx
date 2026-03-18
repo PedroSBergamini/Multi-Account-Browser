@@ -7,6 +7,8 @@ const mockElectronAPI = {
   unlockApp: vi.fn(),
   loadAccounts: vi.fn(),
   getTabPartition: vi.fn(),
+  exportBackup: vi.fn(),
+  importBackup: vi.fn(),
 };
 
 // @ts-ignore

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { SecurityService } from '../src/security/SecurityService.ts';
 import { StorageService } from '../src/storage/StorageService.ts';
@@ -109,6 +110,55 @@ ipcMain.handle('load-accounts', async () => {
  */
 ipcMain.handle('get-tab-partition', (_, tabId: string) => {
   return `persist:tab_${tabId}`;
+});
+
+/**
+ * Exporta o backup criptografado.
+ */
+ipcMain.handle('export-backup', async () => {
+  const data = await storage.load();
+  if (!data) return { success: false, error: 'Nenhum dado para exportar.' };
+
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'Exportar Backup',
+    defaultPath: 'browser_backup.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+
+  if (filePath) {
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+    return { success: true };
+  }
+  return { success: false };
+});
+
+/**
+ * Importa um backup criptografado.
+ */
+ipcMain.handle('import-backup', async () => {
+  const { filePaths } = await dialog.showOpenDialog({
+    title: 'Importar Backup',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile']
+  });
+
+  if (filePaths.length > 0) {
+    try {
+      const content = await fs.readFile(filePaths[0], 'utf8');
+      const data = JSON.parse(content);
+      
+      // Validação básica
+      if (!data.accounts || !data.test) {
+        return { success: false, error: 'Formato de backup inválido.' };
+      }
+
+      await storage.save(data);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: 'Erro ao ler arquivo.' };
+    }
+  }
+  return { success: false };
 });
 
 app.whenReady().then(createWindow);
