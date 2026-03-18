@@ -45,6 +45,7 @@ async function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      webSecurity: false, // Desabilitar webSecurity para permitir manipulação de cabeçalhos
     },
   });
 
@@ -70,14 +71,17 @@ async function createWindow() {
  */
 function setupSessionHeaders(ses: any) {
   if (!ses) return;
-  console.log('>>> Aplicando interceptores de rede à sessão...');
+  const partition = ses.getStoragePath() ? 'persistente' : 'em memória';
+  console.log(`>>> Aplicando interceptores à sessão (${partition})...`);
 
   // Interceptor para cabeçalhos de resposta (remover restrições)
-  ses.webRequest.onHeadersReceived((details: any, callback: any) => {
+  ses.webRequest.onHeadersReceived({ urls: ['*://*/*'] }, (details: any, callback: any) => {
     const headers = { ...details.responseHeaders };
+    const isGoogle = details.url.includes('google.com');
     
-    if (details.url.includes('google.com')) {
-      console.log('>>> Interceptando resposta do Google:', details.url);
+    if (isGoogle) {
+      console.log('>>> [Response] Google URL:', details.url);
+      // console.log('>>> [Response] Headers originais:', JSON.stringify(headers));
     }
 
     // Lista exaustiva de cabeçalhos que podem bloquear o carregamento em webviews/iframes
@@ -91,14 +95,19 @@ function setupSessionHeaders(ses: any) {
       'cross-origin-embedder-policy',
       'x-content-security-policy',
       'x-webkit-csp',
-      'x-content-type-options'
+      'x-content-type-options',
+      'referrer-policy',
+      'permissions-policy'
     ];
 
     let removedCount = 0;
+    const removedKeys: string[] = [];
+
     Object.keys(headers).forEach(headerKey => {
       const lowerKey = headerKey.toLowerCase();
-      if (keysToRemove.some(k => lowerKey === k)) {
+      if (keysToRemove.some(k => lowerKey === k) || lowerKey.startsWith('x-frame-')) {
         delete headers[headerKey];
+        removedKeys.push(headerKey);
         removedCount++;
       }
     });
@@ -107,12 +116,13 @@ function setupSessionHeaders(ses: any) {
     headers['Access-Control-Allow-Origin'] = ['*'];
     headers['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS, PUT, PATCH, DELETE'];
     headers['Access-Control-Allow-Headers'] = ['*'];
+    headers['Access-Control-Allow-Credentials'] = ['true'];
     headers['Cross-Origin-Resource-Policy'] = ['cross-origin'];
     headers['Cross-Origin-Embedder-Policy'] = ['unsafe-none'];
     headers['Cross-Origin-Opener-Policy'] = ['unsafe-none'];
 
-    if (removedCount > 0 && details.url.includes('google.com')) {
-      console.log(`>>> [HeadersReceived] Removidos ${removedCount} cabeçalhos de: ${details.url}`);
+    if (isGoogle && removedCount > 0) {
+      console.log(`>>> [HeadersReceived] Removidos ${removedCount} cabeçalhos (${removedKeys.join(', ')}) de: ${details.url}`);
     }
 
     callback({
@@ -122,15 +132,16 @@ function setupSessionHeaders(ses: any) {
   });
 
   // Interceptor para cabeçalhos de requisição (melhorar compatibilidade)
-  ses.webRequest.onBeforeSendHeaders((details: any, callback: any) => {
-    if (details.url.includes('google.com')) {
-      console.log('>>> Interceptando requisição para o Google:', details.url);
+  ses.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details: any, callback: any) => {
+    const isGoogle = details.url.includes('google.com');
+    if (isGoogle) {
+      console.log('>>> [Request] Google URL:', details.url);
     }
 
     const headers = { ...details.requestHeaders };
     
     // Forçar Sec-Fetch-Dest como 'document' para evitar bloqueios de iframe
-    if (headers['Sec-Fetch-Dest'] === 'iframe' || headers['Sec-Fetch-Dest'] === 'webview') {
+    if (headers['Sec-Fetch-Dest'] === 'iframe' || headers['Sec-Fetch-Dest'] === 'webview' || isGoogle) {
       headers['Sec-Fetch-Dest'] = 'document';
       headers['Sec-Fetch-Mode'] = 'navigate';
       headers['Sec-Fetch-Site'] = 'none';
@@ -181,6 +192,7 @@ app.whenReady().then(() => {
 
     // Interceptar a criação de webviews para ajustar suas webPreferences
     webContents.on('will-attach-webview', (_, webPreferences) => {
+      console.log('>>> Ajustando webPreferences para webview:', webPreferences.partition);
       webPreferences.webSecurity = false;
       webPreferences.nodeIntegration = false;
       webPreferences.contextIsolation = true;

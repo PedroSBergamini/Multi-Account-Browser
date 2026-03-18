@@ -161,6 +161,7 @@ export default function App() {
   const createNewTab = async (url = 'https://www.google.com') => {
     const id = Math.random().toString(36).substring(7);
     const partition = await window.electronAPI.getTabPartition(id);
+    console.log(`>>> Criando nova aba ${id} com partition: ${partition}`);
     
     const newTab: Tab = {
       id,
