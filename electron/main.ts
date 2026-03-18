@@ -7,6 +7,9 @@ import { StorageService } from '../src/storage/StorageService.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Desativa aceleração de hardware para evitar tela preta em algumas GPUs no Windows
+app.disableHardwareAcceleration();
+
 // Singleton instances
 const security = SecurityService.getInstance();
 let storage: StorageService | null = null;
@@ -38,8 +41,12 @@ async function createWindow() {
 
   // Em desenvolvimento, carrega a URL do Vite
   if (process.env.VITE_DEV_SERVER_URL) {
+    console.log('Carregando URL de desenvolvimento:', process.env.VITE_DEV_SERVER_URL);
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    // Abre o DevTools automaticamente em desenvolvimento
+    mainWindow.webContents.openDevTools();
   } else {
+    console.log('Carregando arquivo de produção...');
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 }
