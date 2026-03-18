@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+const { contextBridge, ipcRenderer } = require('electron');
 
 /**
  * Exposição segura de APIs para o Renderer.
@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   on: (channel: string, callback: (...args: any[]) => void) => {
     const validChannels = ['app-event'];
     if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (_, ...args) => callback(...args));
+      ipcRenderer.on(channel, (_: any, ...args: any[]) => callback(...args));
     }
   }
 });
