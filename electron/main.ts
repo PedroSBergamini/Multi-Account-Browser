@@ -67,14 +67,22 @@ async function createWindow() {
  * Verifica se é o primeiro acesso (sem dados salvos).
  */
 ipcMain.handle('is-first-run', async () => {
-  const data = await getStorage().load();
-  return data === null;
+  console.log('Main: Recebido is-first-run');
+  try {
+    const data = await getStorage().load();
+    console.log('Main: Dados carregados:', !!data);
+    return data === null;
+  } catch (error) {
+    console.error('Main: Erro em is-first-run:', error);
+    throw error;
+  }
 });
 
 /**
  * Verifica se a senha mestre está correta e desbloqueia os dados.
  */
 ipcMain.handle('unlock-app', async (_, password: string) => {
+  console.log('Main: Recebido unlock-app');
   const encryptedData = await getStorage().load();
   
   if (!encryptedData) {

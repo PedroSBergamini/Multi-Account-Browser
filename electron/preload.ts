@@ -4,6 +4,8 @@ import { contextBridge, ipcRenderer } from 'electron';
  * Exposição segura de APIs para o Renderer.
  * Segue o princípio de privilégio mínimo.
  */
+console.log('Preload script carregando...');
+
 contextBridge.exposeInMainWorld('electronAPI', {
   /**
    * Verifica se é o primeiro acesso.

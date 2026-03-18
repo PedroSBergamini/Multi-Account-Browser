@@ -72,16 +72,18 @@ export default function App() {
 
   const checkFirstRun = async () => {
     try {
+      console.log('Iniciando checkFirstRun...');
       if (!window.electronAPI) {
         throw new Error('window.electronAPI não encontrado. O preload script foi carregado?');
       }
       const firstRun = await window.electronAPI.isFirstRun();
       console.log('Resultado isFirstRun:', firstRun);
       setIsFirstRun(firstRun);
-    } catch (err) {
-      console.error('Erro ao verificar primeiro acesso:', err);
-      setError('Falha na comunicação com o sistema. Verifique o console.');
-      setIsFirstRun(false); // Permite renderizar para mostrar o erro
+    } catch (err: any) {
+      console.error('Erro detalhado ao verificar primeiro acesso:', err);
+      const msg = err.message || String(err);
+      setError(`Falha na comunicação: ${msg}`);
+      setIsFirstRun(false); 
     }
   };
 
@@ -105,14 +107,16 @@ export default function App() {
     }
 
     try {
+      console.log('Tentando configurar senha mestre...');
       const result = await window.electronAPI.unlockApp(masterPassword);
       if (result.success) {
         setIsUnlocked(true);
         setIsFirstRun(false);
         createNewTab();
       }
-    } catch (err) {
-      setError('Erro ao configurar senha.');
+    } catch (err: any) {
+      console.error('Erro ao configurar senha:', err);
+      setError(`Erro ao configurar: ${err.message || String(err)}`);
     }
   };
 
@@ -124,7 +128,9 @@ export default function App() {
     setError('');
 
     try {
+      console.log('Tentando desbloquear...');
       const result = await window.electronAPI.unlockApp(masterPassword);
+      console.log('Resultado unlockApp:', result);
       
       if (result.success) {
         setIsUnlocked(true);
@@ -133,8 +139,9 @@ export default function App() {
       } else {
         setError(result.error || 'Senha incorreta.');
       }
-    } catch (err) {
-      setError('Erro ao conectar com o sistema.');
+    } catch (err: any) {
+      console.error('Erro ao desbloquear:', err);
+      setError(`Erro de conexão: ${err.message || String(err)}`);
     }
   };
 
