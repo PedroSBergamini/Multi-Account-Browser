@@ -3,9 +3,12 @@
 ## Pré-requisitos
 
 Para rodar o **Multi-Account Browser** no seu computador, você precisará de:
-- **Node.js**: Versão 18 ou superior.
-- **npm**: Versão 9 ou superior.
+- **Node.js**: Versão **20.0.0** ou superior (Recomendado: v20 LTS ou v22).
+- **npm**: Versão 10 ou superior.
 - **Git**: Para clonar o repositório.
+
+> [!IMPORTANT]
+> O Tailwind CSS v4 e o Vite 6 exigem Node.js >= 20. Versões anteriores (como a v18) causarão erros de "Unsupported engine" e falhas em módulos nativos.
 
 ## Passo a Passo para Rodar no Desktop
 
