@@ -55,16 +55,32 @@ export default function App() {
   // --- Initialization ---
 
   useEffect(() => {
+    console.log('App montado. Verificando window.electronAPI:', !!window.electronAPI);
     checkFirstRun();
+    
+    // Fallback caso a verificação demore demais
+    const timer = setTimeout(() => {
+      if (isFirstRun === null) {
+        console.error('Timeout na verificação do primeiro acesso. window.electronAPI disponível?', !!window.electronAPI);
+        setIsFirstRun(false); // Força a renderização para ver o que acontece
+      }
+    }, 3000);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const checkFirstRun = async () => {
     try {
-      // @ts-ignore
+      if (!window.electronAPI) {
+        throw new Error('window.electronAPI não encontrado. O preload script foi carregado?');
+      }
       const firstRun = await window.electronAPI.isFirstRun();
+      console.log('Resultado isFirstRun:', firstRun);
       setIsFirstRun(firstRun);
     } catch (err) {
       console.error('Erro ao verificar primeiro acesso:', err);
+      setError('Falha na comunicação com o sistema. Verifique o console.');
+      setIsFirstRun(false); // Permite renderizar para mostrar o erro
     }
   };
 
@@ -88,7 +104,6 @@ export default function App() {
     }
 
     try {
-      // @ts-ignore
       const result = await window.electronAPI.unlockApp(masterPassword);
       if (result.success) {
         setIsUnlocked(true);
@@ -108,7 +123,6 @@ export default function App() {
     setError('');
 
     try {
-      // @ts-ignore
       const result = await window.electronAPI.unlockApp(masterPassword);
       
       if (result.success) {
@@ -127,7 +141,6 @@ export default function App() {
    * Carrega as contas salvas.
    */
   const loadAccounts = async () => {
-    // @ts-ignore
     const savedAccounts = await window.electronAPI.loadAccounts();
     setAccounts(savedAccounts);
   };
@@ -137,7 +150,6 @@ export default function App() {
    */
   const createNewTab = async (url = 'https://www.google.com') => {
     const id = Math.random().toString(36).substring(7);
-    // @ts-ignore
     const partition = await window.electronAPI.getTabPartition(id);
     
     const newTab: Tab = {
@@ -184,7 +196,6 @@ export default function App() {
    */
   const deleteAccount = async (id: string) => {
     try {
-      // @ts-ignore
       const result = await window.electronAPI.deleteAccount(id);
       if (result.success) {
         loadAccounts();
@@ -210,7 +221,6 @@ export default function App() {
     };
 
     try {
-      // @ts-ignore
       const result = await window.electronAPI.saveCredentials(newAccount);
       if (result.success) {
         loadAccounts();
@@ -225,7 +235,6 @@ export default function App() {
    */
   const handleExport = async () => {
     try {
-      // @ts-ignore
       const result = await window.electronAPI.exportBackup();
       if (result.success) {
         alert('Backup exportado com sucesso!');
@@ -240,7 +249,6 @@ export default function App() {
    */
   const handleImport = async () => {
     try {
-      // @ts-ignore
       const result = await window.electronAPI.importBackup();
       if (result.success) {
         alert('Contas importadas com sucesso!');

@@ -26,7 +26,9 @@ export default defineConfig({
           },
         },
       ]),
-      renderer(),
+      renderer({
+        nodeIntegration: true,
+      }),
     ]),
   ],
   resolve: {
