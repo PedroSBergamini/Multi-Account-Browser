@@ -9,7 +9,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Singleton instances
 const security = SecurityService.getInstance();
-const storage = new StorageService();
+let storage: StorageService | null = null;
+
+function getStorage() {
+  if (!storage) {
+    storage = new StorageService();
+  }
+  return storage;
+}
 
 let mainWindow: BrowserWindow | null = null;
 let masterPasswordHash: string | null = null; // Armazenado apenas em memória durante a sessão
@@ -43,7 +50,7 @@ async function createWindow() {
  * Verifica se é o primeiro acesso (sem dados salvos).
  */
 ipcMain.handle('is-first-run', async () => {
-  const data = await storage.load();
+  const data = await getStorage().load();
   return data === null;
 });
 
@@ -51,13 +58,13 @@ ipcMain.handle('is-first-run', async () => {
  * Verifica se a senha mestre está correta e desbloqueia os dados.
  */
 ipcMain.handle('unlock-app', async (_, password: string) => {
-  const encryptedData = await storage.load();
+  const encryptedData = await getStorage().load();
   
   if (!encryptedData) {
     // Primeira vez: define a senha mestre e cria o dado de teste
     masterPasswordHash = password;
     const testData = await security.encrypt('VALID_SESSION', password);
-    await storage.save({ accounts: [], test: testData });
+    await getStorage().save({ accounts: [], test: testData });
     return { success: true, isNew: true };
   }
 
@@ -77,7 +84,7 @@ ipcMain.handle('unlock-app', async (_, password: string) => {
 ipcMain.handle('save-credentials', async (_, accountData: any) => {
   if (!masterPasswordHash) return { success: false, error: 'App bloqueado.' };
 
-  let currentData = await storage.load() || { accounts: [] };
+  let currentData = await getStorage().load() || { accounts: [] };
   
   // Criptografa os dados da conta
   const encrypted = await security.encrypt(JSON.stringify(accountData), masterPasswordHash);
@@ -88,7 +95,7 @@ ipcMain.handle('save-credentials', async (_, accountData: any) => {
   }
 
   currentData.accounts.push(encrypted);
-  await storage.save(currentData);
+  await getStorage().save(currentData);
   
   return { success: true };
 });
@@ -99,7 +106,7 @@ ipcMain.handle('save-credentials', async (_, accountData: any) => {
 ipcMain.handle('load-accounts', async () => {
   if (!masterPasswordHash) return [];
 
-  const encryptedData = await storage.load();
+  const encryptedData = await getStorage().load();
   if (!encryptedData || !encryptedData.accounts) return [];
 
   const decryptedAccounts = [];
@@ -121,7 +128,7 @@ ipcMain.handle('load-accounts', async () => {
 ipcMain.handle('delete-account', async (_, accountId: string) => {
   if (!masterPasswordHash) return { success: false, error: 'App bloqueado.' };
 
-  const encryptedData = await storage.load();
+  const encryptedData = await getStorage().load();
   if (!encryptedData || !encryptedData.accounts) return { success: false };
 
   const newAccounts = [];
@@ -138,7 +145,7 @@ ipcMain.handle('delete-account', async (_, accountId: string) => {
   }
 
   encryptedData.accounts = newAccounts;
-  await storage.save(encryptedData);
+  await getStorage().save(encryptedData);
   
   return { success: true };
 });
@@ -154,7 +161,7 @@ ipcMain.handle('get-tab-partition', (_, tabId: string) => {
  * Exporta o backup criptografado.
  */
 ipcMain.handle('export-backup', async () => {
-  const data = await storage.load();
+  const data = await getStorage().load();
   if (!data) return { success: false, error: 'Nenhum dado para exportar.' };
 
   const { filePath } = await dialog.showSaveDialog({
@@ -190,7 +197,7 @@ ipcMain.handle('import-backup', async () => {
         return { success: false, error: 'Formato de backup inválido.' };
       }
 
-      await storage.save(data);
+      await getStorage().save(data);
       return { success: true };
     } catch (e) {
       return { success: false, error: 'Erro ao ler arquivo.' };
