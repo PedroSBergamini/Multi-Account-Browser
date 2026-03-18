@@ -53,18 +53,19 @@ export default function App() {
   const [autoSave, setAutoSave] = useState(true);
 
   // --- Initialization ---
+  console.log('App Component Rendered');
 
   useEffect(() => {
-    console.log('App montado. Verificando window.electronAPI:', !!window.electronAPI);
+    console.log('App mounted. window.electronAPI exists:', !!window.electronAPI);
     checkFirstRun();
     
-    // Fallback caso a verificação demore demais
+    // Fallback mais agressivo
     const timer = setTimeout(() => {
       if (isFirstRun === null) {
-        console.error('Timeout na verificação do primeiro acesso. window.electronAPI disponível?', !!window.electronAPI);
-        setIsFirstRun(false); // Força a renderização para ver o que acontece
+        console.warn('Timeout: isFirstRun ainda é null. Forçando renderização.');
+        setIsFirstRun(false);
       }
-    }, 3000);
+    }, 2000);
     
     return () => clearTimeout(timer);
   }, []);
@@ -264,7 +265,15 @@ export default function App() {
   // --- UI Components ---
 
   if (isFirstRun === null) {
-    return <div className="min-h-screen bg-neutral-900" />;
+    return (
+      <div className="min-h-screen bg-blue-900 flex items-center justify-center text-white">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2">Carregando Sistema...</h1>
+          <p className="text-blue-300">Verificando integridade dos dados</p>
+          <div className="mt-4 animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
+        </div>
+      </div>
+    );
   }
 
   if (isFirstRun && !isUnlocked) {

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs/promises';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SecurityService } from '../src/security/SecurityService.ts';
 import { StorageService } from '../src/storage/StorageService.ts';
@@ -28,14 +28,19 @@ let masterPasswordHash: string | null = null; // Armazenado apenas em memória d
  * Cria a janela principal do navegador.
  */
 async function createWindow() {
+  const preloadPath = path.join(__dirname, 'preload.js');
+  console.log('Caminho do Preload:', preloadPath);
+  console.log('Preload existe?', fs.existsSync(preloadPath));
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false, // Inicia oculta para evitar flash branco/preto
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      webviewTag: true, // Habilita o uso de <webview> para as abas
+      webviewTag: true,
     },
   });
 
@@ -43,12 +48,17 @@ async function createWindow() {
   if (process.env.VITE_DEV_SERVER_URL) {
     console.log('Carregando URL de desenvolvimento:', process.env.VITE_DEV_SERVER_URL);
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    // Abre o DevTools automaticamente em desenvolvimento
     mainWindow.webContents.openDevTools();
   } else {
     console.log('Carregando arquivo de produção...');
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  mainWindow.once('ready-to-show', () => {
+    console.log('Janela pronta para exibir!');
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
 }
 
 // --- IPC Handlers (Canais Seguros) ---
@@ -178,7 +188,7 @@ ipcMain.handle('export-backup', async () => {
   });
 
   if (filePath) {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
+    await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
     return { success: true };
   }
   return { success: false };
@@ -196,7 +206,7 @@ ipcMain.handle('import-backup', async () => {
 
   if (filePaths.length > 0) {
     try {
-      const content = await fs.readFile(filePaths[0], 'utf8');
+      const content = await fs.promises.readFile(filePaths[0], 'utf8');
       const data = JSON.parse(content);
       
       // Validação básica
