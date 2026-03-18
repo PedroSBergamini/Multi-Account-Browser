@@ -25,6 +25,7 @@ interface Tab {
   url: string;
   partition: string;
   isActive: boolean;
+  isLoading?: boolean;
 }
 
 interface Account {
@@ -51,6 +52,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [autoSave, setAutoSave] = useState(true);
+  const webviewRefs = React.useRef<{ [key: string]: any }>({});
 
   // --- Initialization ---
   console.log('App Component Rendered');
@@ -196,7 +198,33 @@ export default function App() {
     let targetUrl = urlInput;
     if (!targetUrl.startsWith('http')) targetUrl = `https://${targetUrl}`;
     
-    setTabs((prev: Tab[]) => prev.map((t: Tab) => t.id === activeTabId ? { ...t, url: targetUrl } : t));
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab && webviewRefs.current[activeTab.id]) {
+      webviewRefs.current[activeTab.id].loadURL(targetUrl);
+    } else {
+      setTabs((prev: Tab[]) => prev.map((t: Tab) => t.id === activeTabId ? { ...t, url: targetUrl } : t));
+    }
+  };
+
+  const goBack = () => {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab && webviewRefs.current[activeTab.id]?.canGoBack()) {
+      webviewRefs.current[activeTab.id].goBack();
+    }
+  };
+
+  const goForward = () => {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab && webviewRefs.current[activeTab.id]?.canGoForward()) {
+      webviewRefs.current[activeTab.id].goForward();
+    }
+  };
+
+  const reload = () => {
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (activeTab && webviewRefs.current[activeTab.id]) {
+      webviewRefs.current[activeTab.id].reload();
+    }
   };
 
   /**
@@ -457,9 +485,24 @@ export default function App() {
       {/* Navigation Bar */}
       <div className="bg-neutral-800 p-2 flex items-center gap-3 border-b border-neutral-900">
         <div className="flex items-center gap-1">
-          <button className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"><ChevronLeft className="w-4 h-4" /></button>
-          <button className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"><ChevronRight className="w-4 h-4" /></button>
-          <button className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"><RotateCw className="w-4 h-4" /></button>
+          <button 
+            onClick={goBack}
+            className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button 
+            onClick={goForward}
+            className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button 
+            onClick={reload}
+            className="p-2 hover:bg-neutral-700 rounded-lg text-neutral-400 transition-all"
+          >
+            <RotateCw className="w-4 h-4" />
+          </button>
         </div>
         
         <form onSubmit={navigate} className="flex-1">
@@ -558,13 +601,50 @@ export default function App() {
               key={tab.id}
               className={`absolute inset-0 transition-opacity duration-200 ${tab.id === activeTabId ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}
             >
-              {/* No Electron real, usaríamos a tag <webview> */}
-              {/* Aqui simulamos com um iframe para demonstração visual */}
-              <iframe 
+              {/* No Electron real, usamos a tag <webview> */}
+              <webview 
+                ref={(el) => {
+                  if (el) {
+                    webviewRefs.current[tab.id] = el;
+                    el.addEventListener('did-navigate', (e: any) => {
+                      if (tab.id === activeTabId) setUrlInput(e.url);
+                      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: e.url } : t));
+                    });
+                    el.addEventListener('page-title-updated', (e: any) => {
+                      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, title: e.title } : t));
+                    });
+                    el.addEventListener('did-navigate-in-page', (e: any) => {
+                      if (tab.id === activeTabId) setUrlInput(e.url);
+                      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, url: e.url } : t));
+                    });
+                    el.addEventListener('new-window', (e: any) => {
+                      createNewTab(e.url);
+                    });
+                    el.addEventListener('did-start-loading', () => {
+                      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isLoading: true } : t));
+                    });
+                    el.addEventListener('did-stop-loading', () => {
+                      setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, isLoading: false } : t));
+                    });
+                  }
+                }}
                 src={tab.url}
-                className="w-full h-full border-none"
-                title={tab.title}
+                partition={tab.partition}
+                className="w-full h-full"
+                style={{ display: tab.id === activeTabId ? 'flex' : 'none' }}
+                // @ts-ignore
+                allowpopups="true"
+                useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
               />
+              
+              {tab.isLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-20">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm font-medium text-neutral-600">Carregando página...</p>
+                  </div>
+                </div>
+              )}
               
               {/* Overlay informativo sobre isolamento */}
               <div className="absolute bottom-4 right-4 bg-neutral-900/90 backdrop-blur border border-neutral-700 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-xl pointer-events-none">

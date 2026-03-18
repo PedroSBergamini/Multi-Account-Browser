@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Desativa aceleração de hardware para evitar tela preta em algumas GPUs no Windows
 app.disableHardwareAcceleration();
+
+// Desativar isolamento de sites para permitir que o interceptor de cabeçalhos funcione sem restrições do motor Chromium
+app.commandLine.appendSwitch('disable-site-isolation-trials');
+app.commandLine.appendSwitch('disable-features', 'IsolateOrigins,site-per-process');
 
 // Singleton instances
 const security = SecurityService.getInstance();
@@ -60,6 +64,131 @@ async function createWindow() {
     mainWindow?.focus();
   });
 }
+
+/**
+ * Configura o interceptor de cabeçalhos para uma sessão específica.
+ */
+function setupSessionHeaders(ses: any) {
+  if (!ses) return;
+  console.log('>>> Aplicando interceptores de rede à sessão...');
+
+  // Interceptor para cabeçalhos de resposta (remover restrições)
+  ses.webRequest.onHeadersReceived((details: any, callback: any) => {
+    const headers = { ...details.responseHeaders };
+    
+    if (details.url.includes('google.com')) {
+      console.log('>>> Interceptando resposta do Google:', details.url);
+    }
+
+    // Lista exaustiva de cabeçalhos que podem bloquear o carregamento em webviews/iframes
+    const keysToRemove = [
+      'x-frame-options',
+      'content-security-policy',
+      'content-security-policy-report-only',
+      'frame-options',
+      'cross-origin-resource-policy',
+      'cross-origin-opener-policy',
+      'cross-origin-embedder-policy',
+      'x-content-security-policy',
+      'x-webkit-csp',
+      'x-content-type-options'
+    ];
+
+    let removedCount = 0;
+    Object.keys(headers).forEach(headerKey => {
+      const lowerKey = headerKey.toLowerCase();
+      if (keysToRemove.some(k => lowerKey === k)) {
+        delete headers[headerKey];
+        removedCount++;
+      }
+    });
+
+    // Adicionar permissões CORS e políticas de recursos cruzados para evitar bloqueios
+    headers['Access-Control-Allow-Origin'] = ['*'];
+    headers['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS, PUT, PATCH, DELETE'];
+    headers['Access-Control-Allow-Headers'] = ['*'];
+    headers['Cross-Origin-Resource-Policy'] = ['cross-origin'];
+    headers['Cross-Origin-Embedder-Policy'] = ['unsafe-none'];
+    headers['Cross-Origin-Opener-Policy'] = ['unsafe-none'];
+
+    if (removedCount > 0 && details.url.includes('google.com')) {
+      console.log(`>>> [HeadersReceived] Removidos ${removedCount} cabeçalhos de: ${details.url}`);
+    }
+
+    callback({
+      cancel: false,
+      responseHeaders: headers
+    });
+  });
+
+  // Interceptor para cabeçalhos de requisição (melhorar compatibilidade)
+  ses.webRequest.onBeforeSendHeaders((details: any, callback: any) => {
+    if (details.url.includes('google.com')) {
+      console.log('>>> Interceptando requisição para o Google:', details.url);
+    }
+
+    const headers = { ...details.requestHeaders };
+    
+    // Forçar Sec-Fetch-Dest como 'document' para evitar bloqueios de iframe
+    if (headers['Sec-Fetch-Dest'] === 'iframe' || headers['Sec-Fetch-Dest'] === 'webview') {
+      headers['Sec-Fetch-Dest'] = 'document';
+      headers['Sec-Fetch-Mode'] = 'navigate';
+      headers['Sec-Fetch-Site'] = 'none';
+      headers['Sec-Fetch-User'] = '?1';
+    }
+    
+    // Remover Referer e Origin se forem de origem local/desenvolvimento para evitar bloqueios de segurança
+    if (headers['Referer'] && (headers['Referer'].includes('localhost') || headers['Referer'].includes('run.app'))) {
+      delete headers['Referer'];
+    }
+    if (headers['Origin'] && (headers['Origin'].includes('localhost') || headers['Origin'].includes('run.app'))) {
+      delete headers['Origin'];
+    }
+
+    // Garantir que o User-Agent seja consistente e pareça um navegador real
+    const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+    headers['User-Agent'] = userAgent;
+
+    callback({
+      cancel: false,
+      requestHeaders: headers
+    });
+  });
+}
+
+// Configura o interceptor para a sessão padrão
+app.whenReady().then(() => {
+  setupSessionHeaders(session.defaultSession);
+  
+  // Garantir que todas as sessões criadas (incluindo partitions de webviews) recebam os interceptores
+  app.on('session-created', (ses) => {
+    console.log('>>> Nova sessão detectada:', ses.getStoragePath() || 'em memória');
+    setupSessionHeaders(ses);
+  });
+
+  // Configurar webviews quando forem criados
+  app.on('web-contents-created', (_, webContents) => {
+    // Aplicar interceptores à sessão de qualquer webContents (janela ou webview)
+    setupSessionHeaders(webContents.session);
+
+    if (webContents.getType() === 'webview') {
+      // Desativar restrições de segurança específicas do webview que podem causar bloqueios
+      webContents.setWindowOpenHandler(({ url }) => {
+        mainWindow?.webContents.send('app-event', { type: 'new-window', url });
+        return { action: 'deny' };
+      });
+    }
+
+    // Interceptar a criação de webviews para ajustar suas webPreferences
+    webContents.on('will-attach-webview', (_, webPreferences) => {
+      webPreferences.webSecurity = false;
+      webPreferences.nodeIntegration = false;
+      webPreferences.contextIsolation = true;
+    });
+  });
+
+  createWindow();
+});
 
 // --- IPC Handlers (Canais Seguros) ---
 
@@ -179,7 +308,11 @@ ipcMain.handle('delete-account', async (_, accountId: string) => {
  * Cria uma nova aba com partition isolada.
  */
 ipcMain.handle('get-tab-partition', (_, tabId: string) => {
-  return `persist:tab_${tabId}`;
+  const partition = `persist:tab_${tabId}`;
+  console.log('>>> Solicitada partition para aba:', tabId, '->', partition);
+  // Garantir que a sessão da aba receba os interceptores assim que for solicitada
+  setupSessionHeaders(session.fromPartition(partition));
+  return partition;
 });
 
 /**
@@ -230,8 +363,6 @@ ipcMain.handle('import-backup', async () => {
   }
   return { success: false };
 });
-
-app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
